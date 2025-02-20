@@ -1,0 +1,13 @@
+# File: resnet_server/requirements.txt
+fastapi==0.115.5
+uvicorn==0.32.1
+python-multipart==0.0.17
+# ML dependencies - CPU only versions
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.0+cpu
+torchvision==0.17.0+cpu
+pillow==10.2.0
+ezkl==16.2.3
+onnx==1.17.0
+numpy==1.26.4
+python-dotenv==1.0.1
