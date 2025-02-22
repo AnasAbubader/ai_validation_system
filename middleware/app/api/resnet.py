@@ -34,6 +34,13 @@ TEMP_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # Initialize proof verifier
 proof_verifier = ProofVerifier()
 
+def count_temp_files(user_id: int) -> int:
+    """Count the number of files in user's temporary directory"""
+    user_dir = TEMP_UPLOAD_DIR / str(user_id)
+    if not user_dir.exists():
+        return 0
+    return len(list(user_dir.glob("*")))
+
 def compare_results(result1: dict, result2: dict, tolerance: float = 0.001) -> bool:
     """
     Compare two ResNet results to check if they're the same within tolerance
@@ -134,11 +141,11 @@ async def process_image(
             result=result
         )
         
-        # Check if we should generate proof
-        request_count = count_user_requests(db, current_user.id)
-        logger.debug(f"Current request count: {request_count}, threshold: {current_user.proof_threshold}")
+        # Check if we should generate proof based on number of files
+        file_count = count_temp_files(current_user.id)
+        logger.debug(f"Current file count: {file_count}, threshold: {current_user.proof_threshold}")
         
-        if request_count >= current_user.proof_threshold:
+        if file_count >= current_user.proof_threshold:
             # Choose random request for verification
             random_request = get_random_unverified_request(db, current_user.id)
             if random_request:
@@ -189,6 +196,9 @@ async def process_image(
                                     current_user.id,
                                     verification_result["is_valid"]
                                 )
+                                
+                                # Clean up all temporary files after successful proof generation
+                                cleanup_temp_images(current_user.id)
                             else:
                                 logger.error(f"Error generating proof: {proof_response.text}")
                                 update_proof_status(
@@ -214,9 +224,6 @@ async def process_image(
                             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail=f"Error during verification/proof generation: {str(e)}"
                         )
-                    finally:
-                        # Only clean up temporary images, keep the requests
-                        cleanup_temp_images(current_user.id)
                 else:
                     logger.error(f"Random request image not found: {random_image_path}")
         
