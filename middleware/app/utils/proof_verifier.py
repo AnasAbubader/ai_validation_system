@@ -8,14 +8,14 @@ logger = logging.getLogger(__name__)
 
 class ProofVerifier:
     def __init__(self):
-        self.base_dir = Path(".")
-        self.models_dir = self.base_dir / "models"
-        self.proof_dir = self.base_dir / "proof_data"
-        self.verify_dir = self.base_dir / "verify_data"
+        # Define base paths
+        self.base_dir = Path("ai-validation-system")
+        self.verify_dir = self.base_dir / "middleware" / "verify_data"
         
         # Create necessary directories
-        for dir_path in [self.models_dir, self.proof_dir, self.verify_dir]:
-            dir_path.mkdir(parents=True, exist_ok=True)
+        self.verify_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"Initialized ProofVerifier with verify dir: {self.verify_dir}")
 
     async def verify_step(self, step_name: str, condition: bool, error_msg: str) -> None:
         """Verify each step with detailed error messages."""
@@ -36,13 +36,17 @@ class ProofVerifier:
         """
         try:
             model_type = proof_data.get("model_type", "unknown")
-            verify_dir = self.verify_dir / f"verify_{model_type}"
-            verify_dir.mkdir(exist_ok=True)
+            temp_verify_dir = self.verify_dir / f"temp_{model_type}"
+            temp_verify_dir.mkdir(exist_ok=True)
 
             # Define verification paths
-            proof_path = verify_dir / "received_proof.json"
-            settings_path = verify_dir / "verify_settings.json"
+            proof_path = temp_verify_dir / "received_proof.json"
+            settings_path = temp_verify_dir / "verify_settings.json"
             vk_path = self.verify_dir / f"{model_type}_vk.key"
+
+            # Verify verification key exists
+            if not vk_path.exists():
+                raise FileNotFoundError(f"Verification key not found at {vk_path}")
 
             # Save received proof and settings
             with open(proof_path, "w") as f:
@@ -78,8 +82,12 @@ class ProofVerifier:
         finally:
             # Cleanup temporary verification files
             try:
-                for file in verify_dir.glob('*'):
+                for file in temp_verify_dir.glob('*'):
                     file.unlink()
-                verify_dir.rmdir()
+                temp_verify_dir.rmdir()
             except Exception as e:
                 logger.error(f"Cleanup error: {e}")
+
+    def get_verification_key_path(self, model_type: str) -> Path:
+        """Get the path to the verification key for a specific model"""
+        return self.verify_dir / f"{model_type}_vk.key"

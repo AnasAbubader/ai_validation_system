@@ -5,20 +5,24 @@ import json
 import numpy as np
 import torch
 import logging
-from ..config import ONNX_DIR
 
 logger = logging.getLogger(__name__)
 
 class ProofGenerator:
     def __init__(self):
-        self.base_dir = Path(".")
-        self.models_dir = self.base_dir / "models"
-        self.proof_dir = self.base_dir / "proof_data"
-        self.verify_dir = self.base_dir / "verify_data"
+        # Define base paths
+        self.base_dir = Path("ai-validation-system")
+        self.resnet_server_dir = self.base_dir / "resnet_server"
+        
+        # Define specific paths
+        self.onnx_dir = self.resnet_server_dir / "app" / "models" / "onnx"
+        self.proof_dir = self.resnet_server_dir / "proof_data"
         
         # Create necessary directories
-        for dir_path in [self.models_dir, self.proof_dir, self.verify_dir]:
-            dir_path.mkdir(parents=True, exist_ok=True)
+        self.proof_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"Initialized ProofGenerator with ONNX dir: {self.onnx_dir}")
+        logger.info(f"Proof data will be saved to: {self.proof_dir}")
 
     async def verify_step(self, step_name: str, condition: bool, error_msg: str) -> None:
         """Verify each step with detailed error messages."""
@@ -30,15 +34,22 @@ class ProofGenerator:
     async def generate_proof(self, model_type: str, input_data: np.ndarray):
         """Generate EZKL proof for model inference using optimized approach"""
         try:
+            # Create model-specific proof directory
+            model_proof_dir = self.proof_dir / model_type
+            model_proof_dir.mkdir(exist_ok=True)
+            
             # Define file paths
-            onnx_path = self.models_dir / f"{model_type}.onnx"
-            settings_path = self.proof_dir / f"{model_type}_settings.json"
-            circuit_path = self.proof_dir / f"{model_type}_circuit.ezkl"
-            vk_path = self.verify_dir / f"{model_type}_vk.key"
-            pk_path = self.proof_dir / f"{model_type}_pk.key"
-            witness_path = self.proof_dir / "witness.json"
-            proof_path = self.proof_dir / "proof.json"
-            input_path = self.proof_dir / "input.json"
+            onnx_path = self.onnx_dir / f"{model_type}.onnx"
+            settings_path = model_proof_dir / "settings.json"
+            circuit_path = model_proof_dir / "circuit.ezkl"
+            pk_path = model_proof_dir / "pk.key"
+            witness_path = model_proof_dir / "witness.json"
+            proof_path = model_proof_dir / "proof.json"
+            input_path = model_proof_dir / "input.json"
+
+            # Verify ONNX file exists
+            if not onnx_path.exists():
+                raise FileNotFoundError(f"ONNX model not found at {onnx_path}")
 
             # Prepare input data
             input_tensor = torch.tensor(input_data).reshape(1, 3, 32, 32)
@@ -76,9 +87,10 @@ class ProofGenerator:
                 res = ezkl.compile_circuit(str(onnx_path), str(circuit_path), str(settings_path))
                 await self.verify_step("Circuit compilation", res, "Failed to compile circuit")
 
-            # Generate keys if needed
-            if not (vk_path.exists() and pk_path.exists()):
-                logger.info("Generating keys...")
+            # Generate proving key if needed
+            if not pk_path.exists():
+                logger.info("Generating proving key...")
+                vk_path = self.base_dir / "middleware" / "verify_data" / f"{model_type}_vk.key"
                 res = ezkl.setup(str(circuit_path), str(vk_path), str(pk_path))
                 await self.verify_step("Key generation", res, "Failed to generate keys")
 
@@ -101,14 +113,6 @@ class ProofGenerator:
                 "single"
             )
             await self.verify_step("Proof generation", res, "Failed to generate proof")
-
-            # Local verification before sending
-            res = ezkl.verify(
-                str(proof_path),
-                str(settings_path),
-                str(vk_path)
-            )
-            await self.verify_step("Local proof verification", res, "Failed to verify proof")
 
             # Prepare return data
             with open(proof_path, 'r') as f:
