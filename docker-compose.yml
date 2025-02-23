@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - middleware
+    networks:
+      - app-network
+
+  middleware:
+    build:
+      context: .
+      dockerfile: middleware/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://anas:A1n9a8s9@db/aiaas
+      - RESNET_SERVER_URL=http://resnet_server:8001
+      - JWT_SECRET=olgecebob9YgHZvwpXXxoPoB0IRX/Jl82XN2+cMmnd8=
+      - PYTHONPATH=/app
+    volumes:
+      - ./middleware/app/temp_uploads:/app/app/temp_uploads
+      - ./middleware/app/verifier_data:/app/app/verifier_data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  resnet_server:
+    build:
+      context: ./resnet_server
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./resnet_server/app/models/onnx:/app/app/models/onnx
+      - ./resnet_server/app/uploads:/app/app/uploads
+    networks:
+      - app-network
+
+  db:
+    build:
+      context: .
+      dockerfile: database/Dockerfile
+    environment:
+      - POSTGRES_USER=anas
+      - POSTGRES_PASSWORD=A1n9a8s9
+      - POSTGRES_DB=aiaas
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
