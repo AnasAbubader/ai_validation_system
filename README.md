@@ -88,6 +88,9 @@ docker-compose up --build
 
 # To run in detached mode
 docker-compose up -d --build
+
+# After all services are running, run the setup script for EZKL library
+python setup.py
 ```
 
 ### Manual Start (Development)
@@ -121,6 +124,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```bash
 # If using Docker for database only
 docker-compose up database
+
+# After all services are running, run the setup script for EZKL library
+python setup.py
 ```
 
 ## Environment Variables
@@ -178,7 +184,12 @@ python -m pytest
 ## Troubleshooting
 
 ### Common Issues
-1. **Database Connection Issues**
+1. **EZKL Setup Issues**
+   - If the setup.py script fails, ensure all services are running properly
+   - Check that you have the necessary permissions to install and configure EZKL
+   - Refer to the EZKL documentation for specific troubleshooting
+
+2. **Database Connection Issues**
    - Verify PostgreSQL is running
    - Check database credentials in .env files
    - Ensure database port is not in use
