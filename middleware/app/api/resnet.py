@@ -1,5 +1,5 @@
 # middleware/app/api/resnet.py
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
 import requests
 import shutil
 import os
@@ -78,6 +78,7 @@ async def process_single_image(image_path: Path, filename: str, model_type: str)
     try:
         with open(image_path, "rb") as f:
             files = {"image": (filename, f, "image/jpeg")}
+            logger.debug(f"Sending request to ResNet server with model_type: {model_type}")
             response = requests.post(
                 f"{settings.RESNET_SERVER_URL}/process",
                 files=files,
@@ -98,7 +99,7 @@ async def process_single_image(image_path: Path, filename: str, model_type: str)
 @router.post("/process")
 async def process_image(
     image: UploadFile = File(...),
-    model_type: str = "resnet18",
+    model_type: str = Form("resnet18"),
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -245,11 +246,15 @@ async def get_stats(
 ):
     """Get user's proof generation statistics"""
     failed_verifications = get_failed_verifications(db, current_user.id)
+    failed_proofs = current_user.total_proofs - current_user.successful_proofs
+    
     return {
         "total_proofs": current_user.total_proofs,
         "successful_proofs": current_user.successful_proofs,
+        "failed_proofs": failed_proofs,
         "success_percentage": (current_user.successful_proofs / current_user.total_proofs * 100) if current_user.total_proofs > 0 else 0,
-        "failed_verifications": len(failed_verifications)
+        "failed_verifications": len(failed_verifications),
+        "threshold": current_user.proof_threshold
     }
 
 @router.post("/settings")
