@@ -45,6 +45,14 @@ function ProofStats() {
             <p className="text-sm text-purple-200">Successful Proofs</p>
             <p className="text-2xl font-semibold text-white mt-1">{stats.successful_proofs}</p>
           </div>
+          <div className="bg-black/30 p-4 rounded-lg">
+            <p className="text-sm text-purple-200">Failed Proofs</p>
+            <p className="text-2xl font-semibold text-white mt-1">{stats.failed_proofs}</p>
+          </div>
+          <div className="bg-black/30 p-4 rounded-lg">
+            <p className="text-sm text-purple-200">Proof Threshold</p>
+            <p className="text-2xl font-semibold text-white mt-1">{stats.threshold}</p>
+          </div>
           {stats.success_percentage !== undefined && (
             <div className="bg-black/30 p-4 rounded-lg sm:col-span-2">
               <p className="text-sm text-purple-200">Success Rate</p>
