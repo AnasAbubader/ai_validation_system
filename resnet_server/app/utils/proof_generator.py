@@ -7,15 +7,19 @@ import torch
 import logging
 import torchvision.transforms as transforms
 from PIL import Image
+import os
 import io
 
 logger = logging.getLogger(__name__)
 
 class ProofGenerator:
     def __init__(self):
-        # Get the current file's directory and navigate up to resnet_server
-        current_file = Path(__file__)
-        self.resnet_server_dir = current_file.parent.parent.parent
+        # Use relative paths from the current directory
+        self.resnet_server_dir = Path("/app")  # Base directory in Docker
+        if not self.resnet_server_dir.exists():
+            # Fallback for local development
+            current_file = Path(__file__)
+            self.resnet_server_dir = current_file.parent.parent.parent
         
         # Define paths based on setup.py structure
         self.onnx_dir = self.resnet_server_dir / "app" / "models" / "onnx"
@@ -44,7 +48,19 @@ class ProofGenerator:
             raise FileNotFoundError(f"Configuration not found at {config_path}")
         
         with open(config_path, 'r') as f:
-            return json.load(f)
+            config = json.load(f)
+            
+        # Replace absolute paths with relative paths based on our current directory
+        for key in ["circuit_path", "settings_path", "pk_path"]:
+            if key in config:
+                path_str = config[key]
+                # Convert to a Path object and get just the filename
+                filename = os.path.basename(path_str)
+                # Create a relative path in the proof directory
+                relative_path = str(self.proof_dir / model_type / filename)
+                config[key] = relative_path
+                
+        return config
 
     def preprocess_input(self, input_data: np.ndarray) -> torch.Tensor:
         """Preprocess input data to match model requirements"""
@@ -90,10 +106,16 @@ class ProofGenerator:
             proof_path = model_proof_dir / "proof.json"
             input_path = model_proof_dir / "input.json"
 
-            # Convert paths from strings back to Path objects
+            # Create paths using the model_proof_dir as base
+            # The config now contains relative paths
             circuit_path = Path(config["circuit_path"])
             settings_path = Path(config["settings_path"])
             pk_path = Path(config["pk_path"])
+
+            # Log paths for debugging
+            logger.debug(f"Circuit path: {circuit_path}")
+            logger.debug(f"Settings path: {settings_path}")
+            logger.debug(f"PK path: {pk_path}")
 
             # Verify required files exist
             required_files = {
@@ -101,8 +123,15 @@ class ProofGenerator:
                 "Settings": settings_path,
                 "Proving key": pk_path
             }
+            
             for name, path in required_files.items():
                 if not path.exists():
+                    logger.error(f"{name} file not found at {path}")
+                    # Check if file exists with different casing
+                    parent_dir = path.parent
+                    if parent_dir.exists():
+                        all_files = list(parent_dir.glob("*"))
+                        logger.error(f"Files in {parent_dir}: {all_files}")
                     raise FileNotFoundError(f"{name} file not found at {path}")
 
             # Preprocess input data
