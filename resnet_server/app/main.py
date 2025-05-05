@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, HTTPException, status
+from fastapi import FastAPI, UploadFile, File, HTTPException, status, Form
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 from pathlib import Path
@@ -20,6 +20,9 @@ from .config import UPLOAD_DIR, MODELS_DIR
 # Initialize managers
 model_manager = ModelManager()
 proof_generator = ProofGenerator()
+
+# Flag to control the "cheat mode" - stores the request ID to cheat on
+cheat_enabled = False
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,7 +76,7 @@ async def health_check() -> Dict[str, str]:
 @app.post("/process")
 async def process_image(
     image: UploadFile = File(...),
-    model_type: str = "resnet18"
+    model_type: str = Form("resnet18")
 ) -> Dict[str, Any]:
     """
     Process uploaded image with specified ResNet model
@@ -147,7 +150,7 @@ async def process_image(
 @app.post("/generate-proof")
 async def generate_proof(
     image: UploadFile = File(...),
-    model_type: str = "resnet18"
+    model_type: str = Form("resnet18")
 ) -> Dict[str, Any]:
     """
     Generate EZKL proof for model inference
@@ -159,6 +162,8 @@ async def generate_proof(
     Returns:
         Dict containing proof generation results
     """
+    global cheat_enabled
+    
     # Validate model type
     if model_type not in ["resnet18", "resnet34"]:
         raise HTTPException(
@@ -195,12 +200,34 @@ async def generate_proof(
         except Exception as e:
             raise ValueError(f"Error processing image: {str(e)}")
         
+        # Check if cheat mode is active
+        actual_model_type = model_type
+        if cheat_enabled:
+            # Swap resnet18 with resnet34 and vice versa
+            if model_type == "resnet18":
+                actual_model_type = "resnet34"
+            else:
+                actual_model_type = "resnet18"
+            
+            logger.warning(f"CHEAT MODE ACTIVE! Using {actual_model_type} instead of {model_type}!")
+            # Reset cheat mode after use
+            cheat_enabled = False
+        
         # Generate proof
         try:
+            # Use the potentially swapped model type
             proof_result = await proof_generator.generate_proof(
-                model_type,
+                actual_model_type,  # This could be the swapped model type
                 input_numpy
             )
+            
+            # Important: Still return the response with the originally requested model_type
+            # so the middleware doesn't immediately detect the switch
+            if actual_model_type != model_type:
+                if "proof_data" in proof_result and "model_type" in proof_result["proof_data"]:
+                    proof_result["proof_data"]["model_type"] = model_type
+                    logger.warning(f"Falsified model type in response from {actual_model_type} to {model_type}")
+            
             logger.debug(f"Proof generation result: {proof_result}")
             return proof_result
         except Exception as e:
@@ -220,6 +247,24 @@ async def generate_proof(
                 logger.debug(f"Cleaned up file: {image_path}")
             except Exception as e:
                 logger.error(f"Error cleaning up file {image_path}: {str(e)}")
+
+@app.post("/cheat")
+async def activate_cheat_mode() -> Dict[str, Any]:
+    """
+    Activate cheat mode. The next proof generation will use the wrong model type.
+    The system will swap resnet18 with resnet34 and vice versa when generating proofs.
+    
+    Returns:
+        Dict containing activation status
+    """
+    global cheat_enabled
+    
+    cheat_enabled = True
+    logger.warning("CHEAT MODE ACTIVATED! Next proof generation request will use the wrong model type.")
+    return {
+        "status": "success",
+        "message": "Cheat mode activated. The next proof generation will use the wrong model type (resnet18 ↔ resnet34)."
+    }
 
 if __name__ == "__main__":
     import uvicorn
